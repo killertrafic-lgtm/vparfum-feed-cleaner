@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+/vparfum-supplemental.tsv
+/vparfum-supplemental.csv
+/vparfum-supplemental-nodesc.csv
+.DS_Store
