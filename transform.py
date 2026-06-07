@@ -20,23 +20,37 @@ import xml.etree.ElementTree as ET
 FEED_URL = "https://vparfum.com.ua/index.php?route=extension/feed/remarketing_feed"
 NS = {"g": "http://base.google.com/ns/1.0"}
 
-# Склонение семейства аромата (мн.ч. укр -> прил. для «{X} парфум»)
+# Семейство аромата → мужской род (для description: «цитрусовий аромат»)
 FAMILY_ADJ = {
     "цитрусові": "цитрусовий", "східні": "східний", "фужерні": "фужерний",
-    "деревні": "деревний", "квіткові": "квітковий", "фруктові": "фруктовий",
-    "пряні": "пряний", "шипрові": "шипровий", "акватичні": "акватичний",
-    "гурманські": "гурманський", "шкіряні": "шкіряний", "тютюнові": "тютюновий",
-    "альдегідні": "альдегідний", "зелені": "зелений", "водяні": "водяний",
-    "мускусні": "мускусний", "амброві": "амбровий", "солодкі": "солодкий",
+    "деревні": "деревний", "деревинні": "деревний", "квіткові": "квітковий",
+    "фруктові": "фруктовий", "пряні": "пряний", "шипрові": "шипровий",
+    "акватичні": "акватичний", "гурманські": "гурманський", "шкіряні": "шкіряний",
+    "тютюнові": "тютюновий", "альдегідні": "альдегідний", "зелені": "зелений",
+    "водяні": "водяний", "мускусні": "мускусний", "амброві": "амбровий",
+    "солодкі": "солодкий", "ароматичні": "ароматний",
+}
+# Семейство → женский род (для title под «Парфумована вода ___»)
+FAMILY_ADJ_FEM = {
+    "цитрусові": "цитрусова", "східні": "східна", "фужерні": "фужерна",
+    "деревні": "деревна", "деревинні": "деревна", "квіткові": "квіткова",
+    "фруктові": "фруктова", "пряні": "пряна", "шипрові": "шипрова",
+    "акватичні": "акватична", "гурманські": "гурманська", "шкіряні": "шкіряна",
+    "тютюнові": "тютюнова", "альдегідні": "альдегідна", "зелені": "зелена",
+    "водяні": "водяна", "мускусні": "мускусна", "амброві": "амброва",
+    "солодкі": "солодка", "ароматичні": "ароматна",
 }
 FAMILY_SLUG = {
     "цитрусові": "citrus", "східні": "oriental", "фужерні": "fougere",
-    "деревні": "woody", "квіткові": "floral", "фруктові": "fruity",
-    "пряні": "spicy", "шипрові": "chypre", "акватичні": "aquatic",
-    "гурманські": "gourmand", "шкіряні": "leather", "тютюнові": "tobacco",
-    "альдегідні": "aldehyde", "зелені": "green", "водяні": "aquatic",
-    "мускусні": "musk", "амброві": "amber", "солодкі": "sweet",
+    "деревні": "woody", "деревинні": "woody", "квіткові": "floral",
+    "фруктові": "fruity", "пряні": "spicy", "шипрові": "chypre",
+    "акватичні": "aquatic", "гурманські": "gourmand", "шкіряні": "leather",
+    "тютюнові": "tobacco", "альдегідні": "aldehyde", "зелені": "green",
+    "водяні": "aquatic", "мускусні": "musk", "амброві": "amber",
+    "солодкі": "sweet", "ароматичні": "aromatic",
 }
+# Белый список: family валиден только если в нём (иначе мусорный парсинг → family="")
+FAMILY_VALID = set(FAMILY_ADJ_FEM.keys())
 
 # Метки в описании (для нарезки слипшихся блоков OpenCart).
 # Кавычки нормализуются ДО матча, поэтому «Нота «серця»» = «Нота серця».
@@ -105,75 +119,78 @@ def build_rows(xml_bytes):
             continue
 
         is_auto = raw_title.startswith("Автопарфум")
-        # модель + объём из названия
-        m = re.match(r"(?:Авто)?[Пп]арфум\s+Vparfum\s+(.+?)\s*(\d+)\s*ml", raw_title)
+        # модель + объём (объём бывает латиницей «ml» у парфюмов и кириллицей «мл» у авто)
+        VOL = r"(\d+)\s*(?:ml|мл)"
+        m = re.match(r"(?:Авто)?[Пп]арфум\s+Vparfum\s+(.+?)\s*" + VOL, raw_title)
         if m:
             model, vol_num = m.group(1).strip(), m.group(2)
         else:
             model = re.sub(r"(?:Авто)?[Пп]арфум\s+Vparfum\s+", "", raw_title)
-            vol_num = (re.search(r"(\d+)\s*ml", raw_title) or ["", ""])[1] if re.search(r"(\d+)\s*ml", raw_title) else ""
+            mv = re.search(VOL, raw_title)
+            vol_num = mv.group(1) if mv else ""
+            model = re.sub(VOL, "", model).strip()   # вырезать объём из модели
         volume = f"{vol_num} мл" if vol_num else ""
 
         d = parse_desc(raw_desc)
         family_raw = d.get("Тип аромату", "")
         family_first = re.split(r"[,;/]", family_raw)[0].strip().lower() if family_raw else ""
-        family_adj = FAMILY_ADJ.get(family_first, family_first)
-        family_slug = FAMILY_SLUG.get(family_first, "other" if not family_first else slugify(family_first))
+        if family_first not in FAMILY_VALID:      # белый список: отсекаем мусорный парсинг family
+            family_first = ""
+        family_adj = FAMILY_ADJ.get(family_first, "")        # муж. род — для description
+        family_fem = FAMILY_ADJ_FEM.get(family_first, "")    # жен. род — для title под «вода»
+        family_slug = FAMILY_SLUG.get(family_first, "other")
 
+        # ключевые ноты — ТОЛЬКО для вплетения в описание, в title НЕ идут
         top = ""
         for k in TOP_KEYS:
             if d.get(k):
                 top = notes_lower(d[k]); break
+        top3 = ", ".join(top.split(", ")[:3]) if top else ""
 
         price_num = (re.search(r"([\d.]+)", price_raw) or ["", "0"])[1]
         price = f"{price_num} UAH"
 
-        # ---- generic feed-title (без донора) ----
-        tester = " тестер" if (not is_auto and vol_num == "10") else ""
-        kind = "автопарфум (ароматизатор для авто)" if is_auto else "парфум"
-        bits = [f"Vparfum {model} {volume}{tester}".strip().rstrip(",")]
-        if family_adj and not is_auto:
-            bits.append(f"{family_adj} {kind}")
-        elif is_auto:
-            bits.append("ароматизатор для авто Vparfum")
-        else:
-            bits.append(kind)
-        if top:
-            bits.append(top)
-        title = ", ".join(b for b in bits if b)
-        title = title[:148]
-
-        # ---- clean description ----
-        all_notes = []
-        for k in ["Початкова нота","Верхня нота","Верхняя нота","Верхние ноты",
-                  "Нота серця","Средние ноты","Кінцева нота","Базова нота","Базовые ноты"]:
-            if d.get(k):
-                all_notes.append(clean(d[k]).lower())
-        notes_str = "; ".join(dict.fromkeys(all_notes))  # уникальные, порядок
+        # ---- TITLE: широкий ключ -> уточняющий, без нот, без чужой ТМ ----
         if is_auto:
-            desc = (f"Автопарфум Vparfum {model}, ароматизатор для авто, {volume}. "
-                    f"{('Ноти: ' + notes_str + '. ') if notes_str else ''}Власне виробництво, доставка по Україні.")
-            cat = "2789"
-            ptype = "Автотовари > Ароматизатори для авто"
-            grp = f"vp-{slugify(model)}-auto"
+            # cat 2789: широкий ключ авто-категории первым словом
+            title = f"Ароматизатор для авто Vparfum {model} парфум для машини {volume}"
         else:
-            fam_txt = f"{family_adj} " if family_adj else ""
-            desc = (f"{fam_txt.capitalize()}парфум Vparfum {model}, {volume}. "
-                    f"{('Ноти: ' + notes_str + '. ') if notes_str else ''}"
-                    f"Власне виробництво, доставка по Україні.").replace("  ", " ")
-            cat = "479"
-            ptype = f"Парфумерія > {family_raw.capitalize()} аромати" if family_raw else "Парфумерія"
-            grp = f"vp-{slugify(model)}-parfum"
+            # cat 479: «Парфумована вода [семейство-фем] Vparfum [модель] [объём] [тестер]»
+            bits = ["Парфумована вода"]
+            if family_fem:
+                bits.append(family_fem)            # уточнение вплотную к «вода»
+            bits += ["Vparfum", model, volume]      # бренд на 3-й позиции, не первой
+            if vol_num == "10":
+                bits.append("тестер")
+            title = " ".join(b for b in bits if b)
+        title = re.sub(r"\s+", " ", title).strip()[:148]
+
+        # ---- DESCRIPTION: чистое продающее, ноты вплетены в текст, люкс-слова разрешены ----
+        if is_auto:
+            desc = (f"Ароматизатор для авто Vparfum {model}, {volume}. "
+                    + (f"Аромат розкривається нотами {top3} і довго тримає свіжість у салоні авто. " if top3 else "")
+                    + "Власне виробництво, Україна, швидка доставка.")
+            cat, grp = "2789", f"vp-{slugify(model)}-auto"
+        else:
+            fmt = "формат тестер" if vol_num == "10" else "повний флакон"
+            fam_word = f"{family_fem} " if family_fem else ""
+            desc = (f"Парфумована вода {fam_word}{model} від Vparfum, {volume}, {fmt}. "
+                    "Авторський аромат власного виробництва за мотивами світової парфумерії. "
+                    + (f"У звучанні переплітаються {top3}. " if top3 else "")
+                    + "Розкривається близько до шкіри, пасує для щодення та особливих подій. "
+                    + ("Формат 10 мл зручний, щоб спробувати аромат перед покупкою повного флакона. " if vol_num == "10" else "")
+                    + "Vparfum — нішева селективна парфумерія власного виробництва. Україна, швидка доставка.")
+            cat, grp = "479", f"vp-{slugify(model)}-parfum"
+        desc = re.sub(r"\s+", " ", desc).strip()
 
         rows.append({
             "id": gid,
             "title": title,
-            "description": desc.strip(),
+            "description": desc,
             "price": price,
             "google_product_category": cat,
-            "product_type": ptype,
-            "brand": "Vparfum",
             "identifier_exists": "no",
+            "brand": "Vparfum",
             "item_group_id": grp,
             "size": volume,
             "custom_label_0": f"{vol_num}ml" if vol_num else "",
@@ -183,10 +200,10 @@ def build_rows(xml_bytes):
     return rows
 
 
-# Минимальный supplemental (решение дебатов): переопределяем ТОЛЬКО проблемные поля,
-# не дублируем товар. БЕЗ description (его даёт primary, он раздувает фид вдвое).
-SUPP_COLS = ["id", "title", "price", "google_product_category", "identifier_exists",
-             "brand", "custom_label_0", "custom_label_1", "custom_label_2"]
+# Supplemental: переопределяем проблемные поля. description ВЕРНУЛИ (решение 2-х
+# Shopping-спецов) — primary OpenCart отдаёт HTML-мусор, перекрываем чистым текстом.
+SUPP_COLS = ["id", "title", "description", "price", "google_product_category",
+             "identifier_exists", "brand", "custom_label_0", "custom_label_1", "custom_label_2"]
 
 OUT_CSV = os.path.join("docs", "vparfum-supplemental.csv")
 MIN_ITEMS = 600   # safety-порог: ниже = битый/обрезанный фид OpenCart, не публикуем (стабильно 780)
