@@ -52,6 +52,83 @@ FAMILY_SLUG = {
 # Белый список: family валиден только если в нём (иначе мусорный парсинг → family="")
 FAMILY_VALID = set(FAMILY_ADJ_FEM.keys())
 
+# ── Словари для DESCRIPTION (по family_key — англ. slug) ──
+# Вывод семейства из ноты, когда поля «Тип аромату» нет (а его нет у 70% товаров)
+NOTE_TO_FAMILY = {
+    "бергамот": "citrus", "лимон": "citrus", "грейпфрут": "citrus", "нероли": "citrus",
+    "неролі": "citrus", "мандарин": "citrus", "апельсин": "citrus", "лайм": "citrus", "цитрон": "citrus",
+    "кедр": "woody", "ветивер": "woody", "ветівер": "woody", "сандал": "woody", "сандалове дерево": "woody",
+    "пачулі": "woody", "пачули": "woody", "деревні ноти": "woody",
+    "троянда": "floral", "жасмин": "floral", "півонія": "floral", "фіалка": "floral",
+    "ірис": "floral", "тубероза": "floral", "конвалія": "floral", "квіти": "floral", "білі квіти": "floral",
+    "ваніль": "oriental", "амбра": "oriental", "бензоїн": "oriental", "ладан": "oriental", "олібанум": "oriental",
+    "лаванда": "fougere", "дубовий мох": "chypre", "мох": "chypre",
+    "карамель": "gourmand", "праліне": "gourmand", "шоколад": "gourmand", "мед": "gourmand",
+    "тонка": "gourmand", "боби тонка": "gourmand", "кава": "gourmand", "капучино": "gourmand",
+    "мускус": "musk", "перець": "spicy", "імбир": "spicy", "кардамон": "spicy",
+    "кориця": "spicy", "шафран": "spicy", "диня": "fruity", "яблуко": "fruity",
+    "малина": "fruity", "ананас": "fruity", "груша": "fruity", "персик": "fruity",
+}
+FEM_BY_KEY = {
+    "citrus": "цитрусова", "woody": "деревна", "floral": "квіткова", "oriental": "східна амброва",
+    "fougere": "фужерна", "chypre": "шипрова", "gourmand": "солодка гурманська",
+    "aquatic": "акватична свіжа", "musk": "мускусна", "spicy": "пряна", "fruity": "фруктова",
+    "green": "зелена", "aldehyde": "альдегідна", "leather": "шкіряна", "tobacco": "тютюнова",
+    "amber": "східна амброва", "sweet": "солодка", "fruity": "фруктова", "aromatic": "ароматна",
+}
+CHAR_BY_KEY = {
+    "citrus": "Свіже, бадьоре звучання з прозорою енергією.",
+    "woody": "Глибокий, теплий характер із благородною деревною основою.",
+    "floral": "М'яке, елегантне квіткове звучання.",
+    "oriental": "Чуттєвий, обволікаючий шлейф із пряною теплотою.",
+    "amber": "Чуттєвий, обволікаючий шлейф із пряною теплотою.",
+    "fougere": "Чистий, динамічний характер зі свіжою прохолодою.",
+    "chypre": "Витончене шипрове звучання з благородною гірчинкою.",
+    "gourmand": "Затишне солодке звучання з десертними відтінками.",
+    "sweet": "Затишне солодке звучання з десертними відтінками.",
+    "aquatic": "Прозоре, освіжаюче морське звучання.",
+    "musk": "М'яке пудрове мускусне звучання.",
+    "spicy": "Пряне, зігрівальне звучання з характером.",
+    "fruity": "Соковите, грайливе фруктове звучання.",
+}
+SEASON_BY_KEY = {
+    "citrus": "теплу пору року", "aquatic": "теплу пору року", "fougere": "теплу пору року",
+    "fruity": "теплу пору року", "oriental": "прохолодний сезон", "amber": "прохолодний сезон",
+    "woody": "прохолодний сезон", "gourmand": "прохолодний сезон", "sweet": "прохолодний сезон",
+    "spicy": "прохолодний сезон",
+}
+AUTO_CHAR_BY_KEY = {
+    "citrus": "Свіже цитрусове звучання", "woody": "Тепле деревне звучання",
+    "floral": "Ніжне квіткове звучання", "oriental": "Пряне обволікаюче звучання",
+    "amber": "Пряне обволікаюче звучання", "gourmand": "Солодке десертне звучання",
+    "sweet": "Солодке десертне звучання", "aquatic": "Свіже морське звучання",
+    "fougere": "Чисте прохолодне звучання", "chypre": "Витончене шипрове звучання",
+    "musk": "М'яке мускусне звучання", "spicy": "Пряне зігрівальне звучання",
+    "fruity": "Соковите фруктове звучання",
+}
+CHAR_FALLBACK = "Багатогранне, збалансоване звучання."
+AUTO_CHAR_FALLBACK = "Збалансоване ароматне звучання"
+
+
+def notes_phrase(top):
+    """'імбир, бергамот, грейпфрут' -> 'імбир, бергамот та грейпфрут'"""
+    parts = [p.strip() for p in top.split(",") if p.strip()][:3]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + " та " + parts[-1]
+
+
+def infer_family_key(family_first, top):
+    """family_key из поля, иначе выводим из top-нот."""
+    if family_first in FAMILY_VALID:
+        return FAMILY_SLUG.get(family_first, "")
+    for note in [p.strip().lower() for p in top.split(",")]:
+        if note in NOTE_TO_FAMILY:
+            return NOTE_TO_FAMILY[note]
+    return ""
+
 # Метки в описании (для нарезки слипшихся блоков OpenCart).
 # Кавычки нормализуются ДО матча, поэтому «Нота «серця»» = «Нота серця».
 # Длинные метки раньше коротких, чтобы «Класифікація аромату» не съелось «Класифікація».
@@ -165,21 +242,31 @@ def build_rows(xml_bytes):
             title = " ".join(b for b in bits if b)
         title = re.sub(r"\s+", " ", title).strip()[:148]
 
-        # ---- DESCRIPTION: чистое продающее, ноты вплетены в текст, люкс-слова разрешены ----
+        # ---- DESCRIPTION: чистое товарное, БЕЗ доставки/магазина/промо (синтез 2 маркетологов) ----
+        family_key = infer_family_key(family_first, top)   # из поля ИЛИ из нот
+        notes_txt = notes_phrase(top)
         if is_auto:
-            desc = (f"Ароматизатор для авто Vparfum {model}, {volume}. "
-                    + (f"Аромат розкривається нотами {top3} і довго тримає свіжість у салоні авто. " if top3 else "")
-                    + "Власне виробництво, Україна, швидка доставка.")
+            auto_char = AUTO_CHAR_BY_KEY.get(family_key, AUTO_CHAR_FALLBACK)
+            notes_blk = f" з нотами {notes_txt}" if notes_txt else ""
+            desc = (f"Ароматизатор для авто {model}, автопарфум для салону, об'єм {volume}. "
+                    f"{auto_char}{notes_blk} наповнює салон ненав'язливо й тримається довго. "
+                    "Освіжає повітря в машині та створює приємну атмосферу в дорозі. "
+                    "Підійде у власне авто або як подарунок водієві. "
+                    "Парфумована композиція за мотивами світової парфумерії, підходить для авто, дому та офісу.")
             cat, grp = "2789", f"vp-{slugify(model)}-auto"
         else:
-            fmt = "формат тестер" if vol_num == "10" else "повний флакон"
-            fam_word = f"{family_fem} " if family_fem else ""
-            desc = (f"Парфумована вода {fam_word}{model} від Vparfum, {volume}, {fmt}. "
-                    "Авторський аромат власного виробництва за мотивами світової парфумерії. "
-                    + (f"У звучанні переплітаються {top3}. " if top3 else "")
-                    + "Розкривається близько до шкіри, пасує для щодення та особливих подій. "
-                    + ("Формат 10 мл зручний, щоб спробувати аромат перед покупкою повного флакона. " if vol_num == "10" else "")
-                    + "Vparfum — нішева селективна парфумерія власного виробництва. Україна, швидка доставка.")
+            fem = FEM_BY_KEY.get(family_key, "")
+            char = CHAR_BY_KEY.get(family_key, CHAR_FALLBACK)
+            season = SEASON_BY_KEY.get(family_key, "")
+            tester_blk = ", формат тестер" if vol_num == "10" else ""
+            notes_blk = f" У звучанні переплітаються {notes_txt}." if notes_txt else ""
+            season_blk = f", добре звучить у {season}" if season else ""
+            head_fem = f"{fem} " if fem else ""
+            desc = (f"Парфумована вода унісекс {head_fem}{model}, об'єм {volume}{tester_blk}. "
+                    f"{char}{notes_blk} "
+                    "Розкривається близько до шкіри, лишає делікатний ароматний шлейф. "
+                    f"Пасує для щоденного носіння, офісу та особливих подій{season_blk}. "
+                    "Нішевий селективний аромат за мотивами світової парфумерії для тих, хто шукає несхожі духи з характером.")
             cat, grp = "479", f"vp-{slugify(model)}-parfum"
         desc = re.sub(r"\s+", " ", desc).strip()
 
@@ -195,7 +282,7 @@ def build_rows(xml_bytes):
             "size": volume,
             "custom_label_0": f"{vol_num}ml" if vol_num else "",
             "custom_label_1": "car_parfum" if is_auto else "personal_parfum",
-            "custom_label_2": family_slug,
+            "custom_label_2": family_key or "other",
         })
     return rows
 
